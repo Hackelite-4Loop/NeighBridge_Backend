@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
-import { PostService } from './post.service';
-import { IPost, PostType } from './post.model';
+import { IssueService } from './issue.service';
+import { IIssue, PostPriority, PostStatus } from './issue.model';
 import mongoose from 'mongoose';
 
 interface AuthenticatedRequest extends Request {
@@ -12,39 +12,39 @@ interface AuthenticatedRequest extends Request {
 	};
 }
 
-export class PostController {
-	// Create a new post
-	static async createPost(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+export class IssueController {
+	// Create a new issue
+	static async createIssue(req: AuthenticatedRequest, res: Response, next: NextFunction) {
 		try {
 			const { mongoId, userId } = req.user!;
-			const { title, content, communityId, imageUrls, type } = req.body;
+			const { title, content, priority, location, communityId, imageUrls } = req.body;
 			if (!title || !content || !communityId) {
 				return res.status(400).json({ success: false, message: 'Title, content, and communityId are required' });
 			}
-			const post = await PostService.createPost({
+			const issue = await IssueService.createIssue({
 				title: title.trim(),
 				content,
 				authorId: new mongoose.Types.ObjectId(mongoId),
 				authorName: req.user?.userId || '',
 				communityId: new mongoose.Types.ObjectId(communityId),
+				priority: priority || PostPriority.medium,
+				location,
 				imageUrls: imageUrls || [],
-				type: type || PostType.general,
 			});
-			res.status(201).json({ success: true, data: post });
+			res.status(201).json({ success: true, data: issue });
 		} catch (error) {
 			next(error);
 		}
 	}
 
-	// List posts (optionally filter by communityId or type)
-	static async listPosts(req: Request, res: Response, next: NextFunction) {
+	// List issues (optionally filter by communityId)
+	static async listIssues(req: Request, res: Response, next: NextFunction) {
 		try {
-			const { communityId, type } = req.query;
+			const { communityId } = req.query;
 			const filter: any = {};
 			if (communityId) filter.communityId = communityId;
-			if (type) filter.type = type;
-			const posts = await PostService.getPosts(filter);
-			res.json({ success: true, data: posts });
+			const issues = await IssueService.getIssues(filter);
+			res.json({ success: true, data: issues });
 		} catch (error) {
 			next(error);
 		}
