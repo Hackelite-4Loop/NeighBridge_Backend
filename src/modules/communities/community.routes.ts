@@ -54,11 +54,36 @@ const validateLocationQuery = [
   validateRequest
 ];
 
-// Validation for community ID parameter
+// Validation for community ID parameter (accepts both UUID and ObjectId formats)
 const validateCommunityId = [
   param('communityId')
-    .matches(/^comm_[a-f0-9-]{36}$/)
-    .withMessage('Invalid community ID format'),
+    .custom((value) => {
+      // Accept UUID format (comm_xxx-xxx-xxx)
+      const uuidPattern = /^comm_[a-f0-9-]{36}$/;
+      // Accept MongoDB ObjectId format (24 hex characters)
+      const objectIdPattern = /^[a-f\d]{24}$/i;
+      
+      if (uuidPattern.test(value) || objectIdPattern.test(value)) {
+        return true;
+      }
+      throw new Error('Invalid community ID format');
+    }),
+  validateRequest
+];
+
+// Validation for membership ID parameter
+const validateMembershipId = [
+  param('membershipId')
+    .matches(/^memb_[a-f0-9-]{36}$/)
+    .withMessage('Invalid membership ID format'),
+  validateRequest
+];
+
+// Validation for membership action
+const validateMembershipAction = [
+  body('action')
+    .isIn(['approve', 'reject'])
+    .withMessage('Action must be either "approve" or "reject"'),
   validateRequest
 ];
 
@@ -72,5 +97,14 @@ communityRoutes.get('/nearby', CommunityController.getNearbyCommunities);
 communityRoutes.get('/my-communities', CommunityController.getUserCommunities);
 communityRoutes.post('/:communityId/join', validateCommunityId, CommunityController.joinCommunity);
 communityRoutes.delete('/:communityId/leave', validateCommunityId, CommunityController.leaveCommunity);
+
+// Admin routes for membership management
+communityRoutes.get('/:communityId/pending-requests', validateCommunityId, CommunityController.getPendingRequests);
+communityRoutes.post('/:communityId/membership/:membershipId', 
+  validateCommunityId, 
+  validateMembershipId, 
+  validateMembershipAction, 
+  CommunityController.handleMembershipRequest
+);
 
 export default communityRoutes;

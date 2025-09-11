@@ -23,8 +23,6 @@ export class CommunityController {
       const { userId, mongoId } = req.user!;
       const { name, description, centerLat, centerLng, radius } = req.body;
 
-      console.log('📍 Creating community:', { name, centerLat, centerLng, radius });
-
       // Validate required fields
       if (!name || !centerLat || !centerLng || !radius) {
         return res.status(400).json({
@@ -109,8 +107,6 @@ export class CommunityController {
       // Populate creator details
       await community.populate('createdBy', 'name email');
 
-      console.log('✅ Community created successfully:', communityId);
-
       res.status(201).json({
         success: true,
         message: 'Community created successfully',
@@ -160,8 +156,6 @@ export class CommunityController {
         limit = 20
       } = req.query;
 
-      console.log('🔍 Getting communities with filters:', { lat, lng, maxDistance, search });
-
       let query: any = { status: 'active' };
       let sort: any = { createdAt: -1 };
 
@@ -181,7 +175,6 @@ export class CommunityController {
             }
           };
           sort = {}; // MongoDB $near automatically sorts by distance
-          console.log('📍 Using location-based query');
         }
       }
 
@@ -222,8 +215,6 @@ export class CommunityController {
         });
       }
 
-      console.log(`📊 Found ${communities.length} communities (${total} total)`);
-
       res.json({
         success: true,
         data: {
@@ -251,15 +242,32 @@ export class CommunityController {
       
       // Get user's location from database
       const user = await User.findOne({ userId }).select('mainLocation');
-      if (!user || !user.mainLocation) {
+      let latitude: number;
+      let longitude: number;
+      let isUsingFallback = false;
+
+      if (!user || !user.mainLocation || 
+          user.mainLocation.latitude == null || user.mainLocation.longitude == null ||
+          typeof user.mainLocation.latitude !== 'number' || typeof user.mainLocation.longitude !== 'number') {
+        // Use fallback location (e.g., city center) when user location is not set or invalid
+        // You can customize these coordinates to your app's primary location
+        latitude = 40.7128; // New York City coordinates as example
+        longitude = -74.0060;
+        isUsingFallback = true;
+      } else {
+        latitude = user.mainLocation.latitude;
+        longitude = user.mainLocation.longitude;
+      }
+      // Validate coordinates before using in query
+      if (typeof latitude !== 'number' || typeof longitude !== 'number' || 
+          isNaN(latitude) || isNaN(longitude) ||
+          latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+        console.error('❌ Invalid coordinates:', { latitude, longitude });
         return res.status(400).json({
           success: false,
-          message: 'User location not found. Please update your location in profile.'
+          message: 'Invalid location coordinates'
         });
       }
-
-      const { latitude, longitude } = user.mainLocation;
-      console.log('📍 Finding communities near user location:', { latitude, longitude });
 
       // Find communities within 10km of user
       const communities = await Community.find({
@@ -287,10 +295,13 @@ export class CommunityController {
           );
 
           // Check if user is already a member
-          const existingMembership = await Membership.findOne({
-            userId: user._id,
-            communityId: community._id
-          });
+          let existingMembership = null;
+          if (user) {
+            existingMembership = await Membership.findOne({
+              userId: user._id,
+              communityId: community._id
+            });
+          }
 
           return {
             ...community,
@@ -302,13 +313,13 @@ export class CommunityController {
         })
       );
 
-      console.log(`🎯 Found ${communitiesWithDetails.length} nearby communities`);
-
       res.json({
         success: true,
         data: {
           userLocation: { latitude, longitude },
-          communities: communitiesWithDetails
+          communities: communitiesWithDetails,
+          isUsingFallbackLocation: isUsingFallback,
+          fallbackMessage: isUsingFallback ? 'Showing communities from a default location. Update your profile location for personalized results.' : null
         }
       });
 
@@ -321,13 +332,10 @@ export class CommunityController {
   // Get user's communities (where they are members)
   static async getUserCommunities(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
-      const { userId } = req.user!;
-
-      console.log('👤 Getting communities for user:', userId);
-
-      // Find user's memberships
+      const { userId, mongoId } = req.user!;
+      // ...
       const memberships = await Membership.find({
-        userId,
+        userId: new mongoose.Types.ObjectId(mongoId), // Use mongoId converted to ObjectId
         status: 'active'
       })
       .populate({
@@ -352,8 +360,6 @@ export class CommunityController {
         };
       });
 
-      console.log(`📱 User has ${communities.length} communities`);
-
       res.json({
         success: true,
         data: { communities }
@@ -368,16 +374,24 @@ export class CommunityController {
   // Join a community
   static async joinCommunity(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
-      const { userId } = req.user!;
+      const { userId, mongoId } = req.user!;
       const { communityId } = req.params;
 
-      console.log('🤝 User joining community:', { userId, communityId });
-
-      // Find community
-      const community = await Community.findOne({ 
-        communityId,
-        status: 'active' 
-      });
+      // Find community by either communityId (UUID) or _id (ObjectId)
+      let community;
+      if (/^[a-f\d]{24}$/i.test(communityId)) {
+        // MongoDB ObjectId format
+        community = await Community.findOne({ 
+          _id: communityId,
+          status: 'active' 
+        });
+      } else {
+        // UUID format
+        community = await Community.findOne({ 
+          communityId,
+          status: 'active' 
+        });
+      }
 
       if (!community) {
         return res.status(404).json({
@@ -388,14 +402,19 @@ export class CommunityController {
 
       // Check if user already has membership
       const existingMembership = await Membership.findOne({
-        userId,
+        userId: new mongoose.Types.ObjectId(mongoId),
         communityId: community._id
       });
 
       if (existingMembership) {
+        let message = 'You are already a member of this community';
+        if (existingMembership.status === 'pending') {
+          message = 'Your membership request is pending approval from the community admin';
+        }
+        
         return res.status(409).json({
           success: false,
-          message: 'You are already a member of this community',
+          message,
           data: { 
             membershipStatus: existingMembership.status,
             role: existingMembership.role
@@ -424,33 +443,27 @@ export class CommunityController {
         }
       }
 
-      // Create membership
+      // Create membership with pending status for admin approval
       const membershipId = `memb_${uuidv4()}`;
       const membership = new Membership({
         membershipId,
-        userId,
+        userId: new mongoose.Types.ObjectId(mongoId),
         communityId: community._id,
         role: 'member',
-        status: 'active' // Auto-approve for MVP
+        status: 'pending' // Requires admin approval
       });
 
       await membership.save();
 
-      // Update community member count
-      await Community.findByIdAndUpdate(community._id, {
-        $inc: { memberCount: 1 }
-      });
-
-      console.log('✅ User joined community successfully');
-
       res.status(201).json({
         success: true,
-        message: 'Successfully joined community',
+        message: 'Membership request submitted successfully. Waiting for admin approval.',
         data: {
           membershipId: membership.membershipId,
           role: membership.role,
           status: membership.status,
-          joinedAt: membership.joinedAt
+          joinedAt: membership.joinedAt,
+          isPending: true
         }
       });
 
@@ -469,13 +482,19 @@ export class CommunityController {
   // Leave a community
   static async leaveCommunity(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
-      const { userId } = req.user!;
+      const { userId, mongoId } = req.user!;
       const { communityId } = req.params;
 
-      console.log('👋 User leaving community:', { userId, communityId });
-
-      // Find community and membership
-      const community = await Community.findOne({ communityId });
+      // Find community by either communityId (UUID) or _id (ObjectId)
+      let community;
+      if (/^[a-f\d]{24}$/i.test(communityId)) {
+        // MongoDB ObjectId format
+        community = await Community.findOne({ _id: communityId });
+      } else {
+        // UUID format
+        community = await Community.findOne({ communityId });
+      }
+      
       if (!community) {
         return res.status(404).json({
           success: false,
@@ -484,7 +503,7 @@ export class CommunityController {
       }
 
       const membership = await Membership.findOne({
-        userId,
+        userId: new mongoose.Types.ObjectId(mongoId),
         communityId: community._id
       });
 
@@ -511,8 +530,6 @@ export class CommunityController {
         $inc: { memberCount: -1 }
       });
 
-      console.log('✅ User left community successfully');
-
       res.json({
         success: true,
         message: 'Successfully left community'
@@ -520,6 +537,167 @@ export class CommunityController {
 
     } catch (error: any) {
       console.error('❌ Error leaving community:', error);
+      next(error);
+    }
+  }
+
+  // Get pending membership requests for a community (admin only)
+  static async getPendingRequests(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      const { userId, mongoId } = req.user!;
+      const { communityId } = req.params;
+
+      // Find community by either communityId (UUID) or _id (ObjectId)
+      let community;
+      if (/^[a-f\d]{24}$/i.test(communityId)) {
+        community = await Community.findOne({ _id: communityId });
+      } else {
+        community = await Community.findOne({ communityId });
+      }
+
+      if (!community) {
+        return res.status(404).json({
+          success: false,
+          message: 'Community not found'
+        });
+      }
+
+      // Check if user is admin of this community
+      const adminMembership = await Membership.findOne({
+        userId: new mongoose.Types.ObjectId(mongoId),
+        communityId: community._id,
+        role: 'communityAdmin',
+        status: 'active'
+      });
+
+      if (!adminMembership) {
+        return res.status(403).json({
+          success: false,
+          message: 'Only community admins can view pending requests'
+        });
+      }
+
+      // Get pending membership requests
+      const pendingRequests = await Membership.find({
+        communityId: community._id,
+        status: 'pending'
+      })
+      .populate('userId', 'name email avatar')
+      .sort({ createdAt: -1 });
+
+      res.json({
+        success: true,
+        data: {
+          community: {
+            communityId: community.communityId,
+            name: community.name
+          },
+          pendingRequests: pendingRequests.map(request => ({
+            membershipId: request.membershipId,
+            user: request.userId,
+            requestedAt: (request as any).createdAt,
+            role: request.role
+          }))
+        }
+      });
+
+    } catch (error: any) {
+      console.error('❌ Error getting pending requests:', error);
+      next(error);
+    }
+  }
+
+  // Approve or reject a membership request (admin only)
+  static async handleMembershipRequest(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      const { userId, mongoId } = req.user!;
+      const { communityId, membershipId } = req.params;
+      const { action } = req.body; // 'approve' or 'reject'
+
+      if (!['approve', 'reject'].includes(action)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Action must be either "approve" or "reject"'
+        });
+      }
+
+      // Find community
+      let community;
+      if (/^[a-f\d]{24}$/i.test(communityId)) {
+        community = await Community.findOne({ _id: communityId });
+      } else {
+        community = await Community.findOne({ communityId });
+      }
+
+      if (!community) {
+        return res.status(404).json({
+          success: false,
+          message: 'Community not found'
+        });
+      }
+
+      // Check if user is admin of this community
+      const adminMembership = await Membership.findOne({
+        userId: new mongoose.Types.ObjectId(mongoId),
+        communityId: community._id,
+        role: 'communityAdmin',
+        status: 'active'
+      });
+
+      if (!adminMembership) {
+        return res.status(403).json({
+          success: false,
+          message: 'Only community admins can handle membership requests'
+        });
+      }
+
+      // Find the pending membership request
+      const membership = await Membership.findOne({
+        membershipId,
+        communityId: community._id,
+        status: 'pending'
+      });
+
+      if (!membership) {
+        return res.status(404).json({
+          success: false,
+          message: 'Pending membership request not found'
+        });
+      }
+
+      if (action === 'approve') {
+        // Approve the membership
+        membership.status = 'active';
+        membership.approvedBy = new mongoose.Types.ObjectId(mongoId);
+        membership.approvedAt = new Date();
+        await membership.save();
+
+        // Update community member count
+        await Community.findByIdAndUpdate(community._id, {
+          $inc: { memberCount: 1 }
+        });
+
+        res.json({
+          success: true,
+          message: 'Membership request approved successfully',
+          data: {
+            membershipId: membership.membershipId,
+            status: membership.status,
+            approvedAt: membership.approvedAt
+          }
+        });
+      } else {
+        // Reject the membership
+        await Membership.findByIdAndDelete(membership._id);
+
+        res.json({
+          success: true,
+          message: 'Membership request rejected'
+        });
+      }
+
+    } catch (error: any) {
+      console.error('❌ Error handling membership request:', error);
       next(error);
     }
   }
