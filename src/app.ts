@@ -1,3 +1,5 @@
+// ...existing code...
+// ...existing code...
 import express, { Application } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -7,6 +9,8 @@ import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 // Import routes
 import userRoutes from './modules/users/user.routes';
 import communityRoutes from './modules/communities/community.routes';
+import eventRoutes from './modules/events/event.routes';
+import issueRoutes from './modules/issue/Issue.routes';
 
 // Load environment variables
 dotenv.config();
@@ -39,6 +43,8 @@ app.get('/health', (req, res) => {
 // API routes
 app.use('/api/users', userRoutes);
 app.use('/api/communities', communityRoutes);
+app.use('/api/events', eventRoutes);
+app.use('/api/issues', issueRoutes);
 
 // Test route for quick testing
 app.get('/api/test', (req, res) => {
@@ -53,6 +59,8 @@ app.get('/api/test', (req, res) => {
 });
 
 // 404 handler
+import postRoutes from './modules/posts/post.routes';
+app.use('/api/posts', postRoutes);
 app.use(notFoundHandler);
 
 // Global error handler

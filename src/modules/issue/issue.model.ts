@@ -1,7 +1,21 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
-export interface IEvent extends Document {
-	eventId: string;
+export enum PostPriority {
+	low = 'low',
+	medium = 'medium',
+	high = 'high',
+	critical = 'critical',
+}
+
+export enum PostStatus {
+	open = 'open',
+	inProgress = 'inProgress',
+	resolved = 'resolved',
+	closed = 'closed',
+}
+
+export interface IIssue extends Document {
+	issueId: string;
 	title: string;
 	content: string;
 	authorId: mongoose.Types.ObjectId;
@@ -15,14 +29,13 @@ export interface IEvent extends Document {
 	commentsCount: number;
 	sharesCount: number;
 	isLikedByCurrentUser: boolean;
-	eventDate: Date;
-	eventLocation: string;
-	maxAttendees: number;
-	attendeeIds: string[];
+	priority?: PostPriority;
+	status?: PostStatus;
+	location?: string;
 }
 
-const EventSchema = new Schema<IEvent>({
-	eventId: { type: String, required: true, unique: true },
+const IssueSchema = new Schema<IIssue>({
+	issueId: { type: String, required: true, unique: true },
 	title: { type: String, required: true, trim: true },
 	content: { type: String, required: true },
 	authorId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
@@ -34,10 +47,9 @@ const EventSchema = new Schema<IEvent>({
 	commentsCount: { type: Number, default: 0 },
 	sharesCount: { type: Number, default: 0 },
 	isLikedByCurrentUser: { type: Boolean, default: false },
-	eventDate: { type: Date, required: true },
-	eventLocation: { type: String, required: true },
-	maxAttendees: { type: Number, required: true },
-	attendeeIds: { type: [String], default: [] },
+	priority: { type: String, enum: Object.values(PostPriority), default: PostPriority.medium },
+	status: { type: String, enum: Object.values(PostStatus), default: PostStatus.open },
+	location: { type: String },
 }, { timestamps: true });
 
-export const Event = mongoose.model<IEvent>('Event', EventSchema);
+export const Issue = mongoose.model<IIssue>('Issue', IssueSchema);
