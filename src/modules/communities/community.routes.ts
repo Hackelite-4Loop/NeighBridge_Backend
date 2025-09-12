@@ -93,6 +93,7 @@ communityRoutes.use(authMiddleware);
 // Community routes
 communityRoutes.post('/', validateCreateCommunity, CommunityController.createCommunity);
 communityRoutes.get('/', validateLocationQuery, CommunityController.getAllCommunities);
+communityRoutes.get('/all', CommunityController.getAllCommunitiesSimple);
 communityRoutes.get('/nearby', CommunityController.getNearbyCommunities);
 communityRoutes.get('/my-communities', CommunityController.getUserCommunities);
 communityRoutes.post('/:communityId/join', validateCommunityId, CommunityController.joinCommunity);
@@ -106,5 +107,9 @@ communityRoutes.post('/:communityId/membership/:membershipId',
   validateMembershipAction, 
   CommunityController.handleMembershipRequest
 );
+
+// Community members and stats
+communityRoutes.get('/:communityId/members', validateCommunityId, CommunityController.getCommunityMembers);
+communityRoutes.get('/:communityId/stats', validateCommunityId, CommunityController.getCommunityStats);
 
 export default communityRoutes;

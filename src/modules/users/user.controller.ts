@@ -1,15 +1,22 @@
 
 import { Request, Response, NextFunction } from 'express';
+import mongoose from 'mongoose';
 import { UserService } from './user.service';
 import { JWTUtils } from '../../utils/jwt';
 import { AppError } from '../../middleware/errorHandler';
 import { successResponse, errorResponse } from '../../utils/helpers';
 import { generateUploadSignature, deleteFromCloudinary, extractPublicId } from '../../config/cloudinary';
+import { Post } from '../posts/post.model';
+import { Issue } from '../issue/issue.model';
+import { Event } from '../events/event.model';
+import { Community } from '../communities/community.model';
+import { Membership } from '../communities/membership.model';
 
 // Interface for authenticated requests
 interface AuthenticatedRequest extends Request {
   user?: {
     userId: string;
+    mongoId: string; // MongoDB ObjectId as string
     email: string;
     role: string;
   };
@@ -142,6 +149,108 @@ export class UserController {
       });
 
     } catch (error) {
+      next(error);
+    }
+  }
+
+  // Get user activity statistics
+  static async getActivityStats(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      const { mongoId } = req.user!;
+      const { communityId } = req.query;
+      
+      // Use imported models
+      
+      let query: any = { authorId: mongoId };
+      
+      // If communityId is provided, filter by community
+      if (communityId) {
+        // Handle communityId - could be UUID or ObjectId
+        if (/^[a-f\d]{24}$/i.test(communityId as string)) {
+          // It's already an ObjectId
+          query.communityId = communityId;
+        } else {
+          // It's a UUID, find the community to get its ObjectId
+          const community = await Community.findOne({ communityId: communityId });
+          if (!community) {
+            return res.status(404).json({
+              success: false,
+              message: 'Community not found'
+            });
+          }
+          query.communityId = community._id as mongoose.Types.ObjectId;
+        }
+      }
+      
+      // Get counts for posts, issues, and events
+      const [postsCount, issuesCount, eventsCount] = await Promise.all([
+        Post.countDocuments(query),
+        Issue.countDocuments(query),
+        Event.countDocuments(query)
+      ]);
+      
+      return successResponse(res, {
+        activityStats: {
+          postsCount,
+          issuesCount,
+          eventsCount,
+          totalActivity: postsCount + issuesCount + eventsCount,
+          communitySpecific: !!communityId
+        }
+      });
+      
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // Get user's role in a specific community
+  static async getCommunityRole(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      const { mongoId } = req.user!;
+      const { communityId } = req.params;
+      
+      // Use imported models
+      
+      // Find the community by communityId
+      const community = await Community.findOne({ communityId: communityId });
+      if (!community) {
+        return errorResponse(res, 'Community not found', 404);
+      }
+      
+      // Check if user is a member and get their role from Membership collection
+      const membership = await Membership.findOne({
+        userId: new mongoose.Types.ObjectId(mongoId),
+        communityId: community._id,
+        status: 'active'
+      });
+      
+      if (!membership) {
+        console.log('📡 User is not a member of community');
+        return successResponse(res, {
+          isMember: false,
+          role: null,
+          joinedAt: null,
+          communityName: community.name
+        });
+      }
+      
+      console.log('📡 Found membership:', {
+        userId: membership.userId,
+        communityId: membership.communityId,
+        role: membership.role,
+        status: membership.status
+      });
+      
+      return successResponse(res, {
+        isMember: true,
+        role: membership.role || 'member',
+        joinedAt: membership.joinedAt,
+        communityName: community.name
+      });
+      
+    } catch (error) {
+      console.error('❌ Error getting community role:', error);
       next(error);
     }
   }

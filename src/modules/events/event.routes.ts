@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { EventController } from './event.controller';
 import { authMiddleware } from '../../middleware/auth';
-import { body } from 'express-validator';
+import { body, param, query } from 'express-validator';
 import { validateRequest } from '../../middleware/validation';
 
 const eventRoutes = Router();
@@ -18,10 +18,37 @@ const validateCreateEvent = [
 	validateRequest
 ];
 
+// Validation for RSVP
+const validateRSVP = [
+	body('status').isIn(['going', 'maybe', 'notGoing']).withMessage('Invalid RSVP status'),
+	validateRequest
+];
+
+// Validation for event ID parameter
+const validateEventId = [
+	param('eventId').isMongoId().withMessage('Invalid event ID'),
+	validateRequest
+];
+
 // Create event
 eventRoutes.post('/', authMiddleware, validateCreateEvent, EventController.createEvent);
 
 // List events (optionally by community)
 eventRoutes.get('/', EventController.listEvents);
+
+// Get event by ID
+eventRoutes.get('/:eventId', validateEventId, EventController.getEventById);
+
+// RSVP to an event
+eventRoutes.post('/:eventId/rsvp', authMiddleware, validateEventId, validateRSVP, EventController.rsvpToEvent);
+
+// Get RSVPs for an event
+eventRoutes.get('/:eventId/rsvps', validateEventId, EventController.getEventRSVPs);
+
+// Get user's RSVP status for an event
+eventRoutes.get('/:eventId/rsvp-status', authMiddleware, validateEventId, EventController.getUserRSVPStatus);
+
+// Like/Unlike an event
+eventRoutes.post('/:eventId/like', authMiddleware, EventController.toggleLike);
 
 export default eventRoutes;

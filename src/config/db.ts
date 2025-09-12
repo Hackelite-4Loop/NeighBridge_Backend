@@ -20,9 +20,19 @@ const connectDB = async () => {
     
     await mongoose.connect(process.env.MONGO_URI, {
       dbName: "neighbridge",
-      serverSelectionTimeoutMS: 10000,
-      connectTimeoutMS: 10000,
+      // Connection timeouts
+      serverSelectionTimeoutMS: 30000, // Increased from 10s to 30s
+      connectTimeoutMS: 30000, // Increased from 10s to 30s
       socketTimeoutMS: 45000,
+      // Retry configuration
+      maxPoolSize: 10, // Maintain up to 10 socket connections
+      minPoolSize: 2, // Maintain at least 2 socket connections
+      maxIdleTimeMS: 30000, // Close connections after 30 seconds of inactivity
+      // Network error handling
+      retryWrites: true,
+      retryReads: true,
+      // Additional resilience options
+      heartbeatFrequencyMS: 10000, // Check server health every 10s
     });
     
     console.log("✅ MongoDB Connected Successfully");
@@ -42,6 +52,15 @@ const connectDB = async () => {
       console.log("   - Try changing DNS servers to 8.8.8.8 or 1.1.1.1");
       console.log("   - Or get a non-SRV connection string from Atlas");
       console.log("   - Corporate/school networks often block SRV queries");
+    }
+    
+    if (error.message?.includes('getaddrinfo ENOTFOUND') && error.message?.includes('shard')) {
+      console.log("\n🔧 MongoDB Shard DNS Resolution Error:");
+      console.log("   - Individual shard nodes can't be resolved");
+      console.log("   - This is often a DNS or network connectivity issue");
+      console.log("   - Try changing DNS to 8.8.8.8 or 1.1.1.1");
+      console.log("   - Consider using a non-SRV connection string");
+      console.log("   - Check if you're behind a corporate firewall");
     }
     
     if (error.message?.includes('authentication failed')) {

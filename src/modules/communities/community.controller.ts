@@ -4,6 +4,10 @@ import mongoose from 'mongoose';
 import { Community, ICommunity } from './community.model';
 import { Membership } from './membership.model';
 import { User } from '../users/user.model';
+import { Post } from '../posts/post.model';
+import { Issue } from '../issue/issue.model';
+import { Event } from '../events/event.model';
+import { LocationService } from '../../services/location.service';
 
 // Interface for authenticated requests
 interface AuthenticatedRequest extends Request {
@@ -31,8 +35,13 @@ export class CommunityController {
         });
       }
 
-      // Validate coordinates
-      if (centerLat < -90 || centerLat > 90 || centerLng < -180 || centerLng > 180) {
+      // Convert to proper types (HTTP sends everything as strings)
+      const lat = parseFloat(centerLat);
+      const lng = parseFloat(centerLng);
+      const radiusNum = parseInt(radius);
+
+      // Validate coordinates using LocationService
+      if (!LocationService.validateCoordinates(lat, lng)) {
         return res.status(400).json({
           success: false,
           message: 'Invalid coordinates'
@@ -40,7 +49,7 @@ export class CommunityController {
       }
 
       // Validate radius (100m to 50km)
-      if (radius < 100 || radius > 50000) {
+      if (isNaN(radiusNum) || radiusNum < 100 || radiusNum > 50000) {
         return res.status(400).json({
           success: false,
           message: 'Radius must be between 100m and 50km'
@@ -54,7 +63,7 @@ export class CommunityController {
           $near: {
             $geometry: {
               type: 'Point',
-              coordinates: [centerLng, centerLat]
+              coordinates: [lng, lat]
             },
             $maxDistance: 1000 // 1km radius
           }
@@ -68,10 +77,17 @@ export class CommunityController {
         });
       }
 
+      // Get location details using reverse geocoding
+      const locationDetails = await LocationService.getLocationDetailsWithFallback(
+        lat, 
+        lng, 
+        name.trim()
+      );
+
       // Generate unique community ID
       const communityId = `comm_${uuidv4()}`;
 
-      // Create community
+      // Create community with enhanced location data
       const community = new Community({
         communityId,
         name: name.trim(),
@@ -79,11 +95,19 @@ export class CommunityController {
         createdBy: new mongoose.Types.ObjectId(mongoId), // Convert string to ObjectId
         location: {
           type: 'Point',
-          coordinates: [centerLng, centerLat] // MongoDB expects [lng, lat]
+          coordinates: [lng, lat] // MongoDB expects [lng, lat]
         },
-        centerLat,
-        centerLng,
-        radius,
+        centerLat: lat,
+        centerLng: lng,
+        radius: radiusNum,
+        locationName: locationDetails.locationName,
+        locationAddress: locationDetails.address,
+        locationDetails: {
+          city: locationDetails.city,
+          state: locationDetails.state,
+          country: locationDetails.country,
+          postalCode: locationDetails.postalCode
+        },
         status: 'active' // Auto-approve for MVP
       });
 
@@ -235,10 +259,63 @@ export class CommunityController {
     }
   }
 
+  // Get all communities (fallback method)
+  static async getAllCommunitiesSimple(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      const { userId, mongoId } = req.user!;
+      
+      // Get all active communities
+      const communities = await Community.find({
+        status: 'active'
+      })
+      .populate('createdBy', 'name email')
+      .limit(100)
+      .lean();
+
+      console.log(`🔍 Found ${communities.length} communities (all communities method)`);
+
+      // Check if user is already a member of each community
+      const user = await User.findOne({ userId });
+      const communitiesWithDetails = await Promise.all(
+        communities.map(async (community: any) => {
+          let existingMembership = null;
+          if (user) {
+            existingMembership = await Membership.findOne({
+              userId: user._id,
+              communityId: community._id
+            });
+          }
+
+          return {
+            ...community,
+            distanceFromUser: 0,
+            canJoin: true, // Allow joining all communities
+            isMember: !!existingMembership,
+            membershipStatus: existingMembership?.status
+          };
+        })
+      );
+
+      res.json({
+        success: true,
+        data: {
+          userLocation: { latitude: 0, longitude: 0 },
+          communities: communitiesWithDetails,
+          isUsingFallbackLocation: true,
+          fallbackMessage: 'Showing all active communities'
+        }
+      });
+
+    } catch (error: any) {
+      console.error('❌ Error getting all communities:', error);
+      next(error);
+    }
+  }
+
   // Get communities near user location
   static async getNearbyCommunities(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
-      const { userId } = req.user!;
+      const { userId, mongoId } = req.user!;
       
       // Get user's location from database
       const user = await User.findOne({ userId }).select('mainLocation');
@@ -258,41 +335,68 @@ export class CommunityController {
         latitude = user.mainLocation.latitude;
         longitude = user.mainLocation.longitude;
       }
-      // Validate coordinates before using in query
-      if (typeof latitude !== 'number' || typeof longitude !== 'number' || 
-          isNaN(latitude) || isNaN(longitude) ||
-          latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
-        console.error('❌ Invalid coordinates:', { latitude, longitude });
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid location coordinates'
-        });
+
+      // First, try geospatial query
+      let communities = [];
+      try {
+        communities = await Community.find({
+          status: 'active',
+          location: {
+            $near: {
+              $geometry: {
+                type: 'Point',
+                coordinates: [longitude, latitude]
+              },
+              $maxDistance: 50000 // 50km - increased radius
+            }
+          }
+        })
+        .populate('createdBy', 'name email')
+        .limit(50)
+        .lean();
+      } catch (geoError: any) {
+        console.log('⚠️ Geospatial query failed, falling back to simple query:', geoError.message);
+        // Fallback: Get all active communities if geospatial query fails
+        communities = await Community.find({
+          status: 'active'
+        })
+        .populate('createdBy', 'name email')
+        .limit(50)
+        .lean();
       }
 
-      // Find communities within 10km of user
-      const communities = await Community.find({
-        status: 'active',
-        location: {
-          $near: {
-            $geometry: {
-              type: 'Point',
-              coordinates: [longitude, latitude]
-            },
-            $maxDistance: 10000 // 10km
-          }
-        }
-      })
-      .populate('createdBy', 'name email')
-      .limit(50)
-      .lean();
+      // If no communities found with geospatial query, get all active communities
+      if (communities.length === 0) {
+        console.log('📍 No communities found with geospatial query, getting all active communities');
+        communities = await Community.find({
+          status: 'active'
+        })
+        .populate('createdBy', 'name email')
+        .limit(50)
+        .lean();
+      }
+
+      console.log(`🔍 Found ${communities.length} communities for discovery`);
 
       // Add distance and check if user can join each community
       const communitiesWithDetails = await Promise.all(
         communities.map(async (community: any) => {
-          const distance = CommunityController.calculateDistance(
-            latitude, longitude,
-            community.centerLat, community.centerLng
-          );
+          let distance = 0;
+          let canJoin = true;
+
+          // Calculate distance if we have valid coordinates
+          if (community.centerLat && community.centerLng && 
+              typeof community.centerLat === 'number' && typeof community.centerLng === 'number') {
+            distance = CommunityController.calculateDistance(
+              latitude, longitude,
+              community.centerLat, community.centerLng
+            );
+            canJoin = distance <= community.radius;
+          } else {
+            // If community doesn't have proper coordinates, allow joining
+            canJoin = true;
+            distance = 0;
+          }
 
           // Check if user is already a member
           let existingMembership = null;
@@ -306,7 +410,7 @@ export class CommunityController {
           return {
             ...community,
             distanceFromUser: Math.round(distance),
-            canJoin: distance <= community.radius,
+            canJoin: canJoin,
             isMember: !!existingMembership,
             membershipStatus: existingMembership?.status
           };
@@ -698,6 +802,152 @@ export class CommunityController {
 
     } catch (error: any) {
       console.error('❌ Error handling membership request:', error);
+      next(error);
+    }
+  }
+
+  // Get community members
+  static async getCommunityMembers(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      const { communityId } = req.params;
+      const { page = 1, limit = 20, role } = req.query;
+
+      // Find community by either communityId (UUID) or _id (ObjectId)
+      let community;
+      if (/^[a-f\d]{24}$/i.test(communityId)) {
+        community = await Community.findOne({ _id: communityId });
+      } else {
+        community = await Community.findOne({ communityId });
+      }
+
+      if (!community) {
+        return res.status(404).json({
+          success: false,
+          message: 'Community not found'
+        });
+      }
+
+      // Build filter for memberships
+      let filter: any = { 
+        communityId: community._id,
+        status: 'active'
+      };
+
+      // Filter by role if specified
+      if (role) {
+        filter.role = role;
+      }
+
+      // Calculate pagination
+      const pageNum = parseInt(page as string);
+      const limitNum = parseInt(limit as string);
+      const skip = (pageNum - 1) * limitNum;
+
+      // Get memberships with user details
+      const memberships = await Membership.find(filter)
+        .populate('userId', 'name email avatar role status')
+        .sort({ joinedAt: -1 })
+        .skip(skip)
+        .limit(limitNum);
+
+      // Get total count
+      const total = await Membership.countDocuments(filter);
+
+      // Format response
+      const members = memberships.map(membership => {
+        const user = membership.userId as any;
+        return {
+          membershipId: membership.membershipId,
+          role: membership.role,
+          joinedAt: membership.joinedAt,
+          user: {
+            userId: user.userId,
+            name: user.name,
+            email: user.email,
+            avatar: user.avatar,
+            role: user.role,
+            status: user.status
+          }
+        };
+      });
+
+      res.json({
+        success: true,
+        data: {
+          community: {
+            communityId: community.communityId,
+            name: community.name,
+            memberCount: community.memberCount
+          },
+          members,
+          pagination: {
+            current: pageNum,
+            pages: Math.ceil(total / limitNum),
+            total,
+            hasNext: pageNum * limitNum < total,
+            hasPrev: pageNum > 1
+          }
+        }
+      });
+
+    } catch (error: any) {
+      console.error('❌ Error getting community members:', error);
+      next(error);
+    }
+  }
+
+  // Get community statistics
+  static async getCommunityStats(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      const { communityId } = req.params;
+
+      // Find community by either communityId (UUID) or _id (ObjectId)
+      let community;
+      if (/^[a-f\d]{24}$/i.test(communityId)) {
+        community = await Community.findOne({ _id: communityId });
+      } else {
+        community = await Community.findOne({ communityId });
+      }
+
+      if (!community) {
+        return res.status(404).json({
+          success: false,
+          message: 'Community not found'
+        });
+      }
+
+      // Use imported models for counting
+
+      // Get counts for posts, issues, and events in this community
+      const [postsCount, issuesCount, eventsCount, membersCount] = await Promise.all([
+        Post.countDocuments({ communityId: community.communityId }),
+        Issue.countDocuments({ communityId: community.communityId }),
+        Event.countDocuments({ communityId: community.communityId }),
+        Membership.countDocuments({ communityId: community._id, status: 'active' })
+      ]);
+
+      res.json({
+        success: true,
+        data: {
+          community: {
+            communityId: community.communityId,
+            name: community.name,
+            description: community.description,
+            memberCount: membersCount,
+            createdAt: community.createdAt
+          },
+          stats: {
+            postsCount,
+            issuesCount,
+            eventsCount,
+            membersCount,
+            totalActivity: postsCount + issuesCount + eventsCount
+          }
+        }
+      });
+
+    } catch (error: any) {
+      console.error('❌ Error getting community stats:', error);
       next(error);
     }
   }

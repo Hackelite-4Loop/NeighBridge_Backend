@@ -1,10 +1,10 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
 export enum PostPriority {
-	low = 'low',
-	medium = 'medium',
-	high = 'high',
-	critical = 'critical',
+	low = 'low',           // Less Urgent
+	medium = 'medium',     // Moderately Urgent  
+	high = 'high',         // Urgent
+	critical = 'critical', // Extremely Urgent
 }
 
 export enum PostStatus {

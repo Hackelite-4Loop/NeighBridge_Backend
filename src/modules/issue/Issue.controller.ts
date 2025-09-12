@@ -49,4 +49,88 @@ export class IssueController {
 			next(error);
 		}
 	}
+
+	// Update issue priority
+	static async updatePriority(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+		try {
+			const { issueId } = req.params;
+			const { priority } = req.body;
+
+			if (!Object.values(PostPriority).includes(priority)) {
+				return res.status(400).json({
+					success: false,
+					message: 'Invalid priority level'
+				});
+			}
+
+			const issue = await IssueService.updateIssue(issueId, { priority });
+			if (!issue) {
+				return res.status(404).json({
+					success: false,
+					message: 'Issue not found'
+				});
+			}
+
+			res.json({
+				success: true,
+				message: 'Priority updated successfully',
+				data: issue
+			});
+		} catch (error) {
+			next(error);
+		}
+	}
+
+	// Update issue status
+	static async updateStatus(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+		try {
+			const { issueId } = req.params;
+			const { status } = req.body;
+
+			if (!Object.values(PostStatus).includes(status)) {
+				return res.status(400).json({
+					success: false,
+					message: 'Invalid status'
+				});
+			}
+
+			const issue = await IssueService.updateIssue(issueId, { status });
+			if (!issue) {
+				return res.status(404).json({
+					success: false,
+					message: 'Issue not found'
+				});
+			}
+
+			res.json({
+				success: true,
+				message: 'Status updated successfully',
+				data: issue
+			});
+		} catch (error) {
+			next(error);
+		}
+	}
+
+	// Get issue by ID
+	static async getIssueById(req: Request, res: Response, next: NextFunction) {
+		try {
+			const { issueId } = req.params;
+			const issue = await IssueService.getIssueById(issueId);
+			
+			if (!issue) {
+				return res.status(404).json({
+					success: false,
+					message: 'Issue not found'
+				});
+			}
+
+			res.json({
+				success: true,
+				data: issue
+			});
+		} catch (error) {
+			next(error);
+		}
+	}
 }

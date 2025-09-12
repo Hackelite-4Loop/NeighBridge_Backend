@@ -16,6 +16,8 @@ userRoutes.get('/check-email/:email', UserController.checkEmailAvailability);  /
 // Protected routes
 userRoutes.use(authMiddleware); // Apply auth middleware to all routes below
 userRoutes.get('/profile', UserController.getProfile);
+userRoutes.get('/activity-stats', UserController.getActivityStats);
+userRoutes.get('/community-role/:communityId', UserController.getCommunityRole);
 userRoutes.put('/profile', UserController.updateProfile);
 userRoutes.put('/location', UserController.updateLocation);
 userRoutes.get('/nearby', UserController.findNearbyUsers);

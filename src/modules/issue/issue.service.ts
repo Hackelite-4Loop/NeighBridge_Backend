@@ -17,5 +17,20 @@ export class IssueService {
 		return Issue.find(filter, null, options).sort({ createdAt: -1 });
 	}
 
-	// Add more methods as needed (update, delete, etc.)
+	static async getIssueById(issueId: string): Promise<IIssue | null> {
+		return Issue.findOne({ issueId });
+	}
+
+	static async updateIssue(issueId: string, updateData: Partial<IIssue>): Promise<IIssue | null> {
+		return Issue.findOneAndUpdate(
+			{ issueId },
+			{ $set: updateData },
+			{ new: true }
+		);
+	}
+
+	static async deleteIssue(issueId: string): Promise<boolean> {
+		const result = await Issue.findOneAndDelete({ issueId });
+		return !!result;
+	}
 }

@@ -22,4 +22,16 @@ postRoutes.post('/', authMiddleware, validateCreatePost, PostController.createPo
 // List posts (optionally by community or type)
 postRoutes.get('/', PostController.listPosts);
 
+// Like/Unlike a post
+postRoutes.post('/:postId/like', authMiddleware, PostController.toggleLike);
+
+// Add a comment to a post
+postRoutes.post('/:postId/comments', authMiddleware, PostController.addComment);
+
+// Get comments for a post
+postRoutes.get('/:postId/comments', PostController.getComments);
+
+// Delete a comment
+postRoutes.delete('/comments/:commentId', authMiddleware, PostController.deleteComment);
+
 export default postRoutes;

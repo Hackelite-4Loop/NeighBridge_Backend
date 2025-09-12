@@ -15,6 +15,8 @@ export interface IUser extends Document {
     city?: string;
     state?: string;
     country?: string;
+    locationName?: string;
+    postalCode?: string;
   };
   isEmailVerified: boolean;
   isPhoneVerified: boolean;

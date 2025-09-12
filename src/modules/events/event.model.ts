@@ -7,7 +7,7 @@ export interface IEvent extends Document {
 	authorId: mongoose.Types.ObjectId;
 	authorName: string;
 	authorImageUrl?: string;
-	communityId: mongoose.Types.ObjectId;
+	communityId: string;
 	createdAt: Date;
 	updatedAt: Date;
 	imageUrls: string[];
@@ -19,6 +19,7 @@ export interface IEvent extends Document {
 	eventLocation: string;
 	maxAttendees: number;
 	attendeeIds: string[];
+	likedBy: string[];
 }
 
 const EventSchema = new Schema<IEvent>({
@@ -28,7 +29,7 @@ const EventSchema = new Schema<IEvent>({
 	authorId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
 	authorName: { type: String, required: true },
 	authorImageUrl: { type: String },
-	communityId: { type: Schema.Types.ObjectId, ref: 'Community', required: true },
+	communityId: { type: String, required: true },
 	imageUrls: { type: [String], default: [] },
 	likesCount: { type: Number, default: 0 },
 	commentsCount: { type: Number, default: 0 },
@@ -38,6 +39,7 @@ const EventSchema = new Schema<IEvent>({
 	eventLocation: { type: String, required: true },
 	maxAttendees: { type: Number, required: true },
 	attendeeIds: { type: [String], default: [] },
+	likedBy: { type: [String], default: [] },
 }, { timestamps: true });
 
 export const Event = mongoose.model<IEvent>('Event', EventSchema);

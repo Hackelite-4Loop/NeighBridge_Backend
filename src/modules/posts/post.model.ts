@@ -13,7 +13,7 @@ export interface IPost extends Document {
 	authorId: mongoose.Types.ObjectId;
 	authorName: string;
 	authorImageUrl?: string;
-	communityId: mongoose.Types.ObjectId;
+	communityId: string;
 	createdAt: Date;
 	updatedAt: Date;
 	imageUrls: string[];
@@ -31,7 +31,7 @@ const PostSchema = new Schema<IPost>({
 	authorId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
 	authorName: { type: String, required: true },
 	authorImageUrl: { type: String },
-	communityId: { type: Schema.Types.ObjectId, ref: 'Community', required: true },
+	communityId: { type: String, required: true },
 	imageUrls: { type: [String], default: [] },
 	likesCount: { type: Number, default: 0 },
 	commentsCount: { type: Number, default: 0 },

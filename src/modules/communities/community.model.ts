@@ -13,6 +13,14 @@ export interface ICommunity extends Document {
   centerLat: number;
   centerLng: number;
   radius: number; // in meters
+  locationName: string;
+  locationAddress: string;
+  locationDetails: {
+    city?: string;
+    state?: string;
+    country?: string;
+    postalCode?: string;
+  };
   status: 'active' | 'suspended';
   memberCount: number;
   createdAt: Date;
@@ -67,6 +75,25 @@ const CommunitySchema = new Schema<ICommunity>({
     required: true,
     min: -180,
     max: 180
+  },
+  // Enhanced location information
+  locationName: {
+    type: String,
+    required: true,
+    trim: true,
+    maxlength: 200
+  },
+  locationAddress: {
+    type: String,
+    required: true,
+    trim: true,
+    maxlength: 500
+  },
+  locationDetails: {
+    city: { type: String, trim: true },
+    state: { type: String, trim: true },
+    country: { type: String, trim: true },
+    postalCode: { type: String, trim: true }
   },
   radius: {
     type: Number,
