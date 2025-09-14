@@ -58,3 +58,4 @@ CommentSchema.index({ postId: 1, createdAt: -1 });
 CommentSchema.index({ parentCommentId: 1 });
 
 export const Comment = mongoose.model<IComment>('Comment', CommentSchema);
+

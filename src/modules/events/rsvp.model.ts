@@ -44,3 +44,4 @@ const RSVPSchema = new Schema<IRSVP>({
 RSVPSchema.index({ userId: 1, eventId: 1 }, { unique: true });
 
 export const RSVP = mongoose.model<IRSVP>('RSVP', RSVPSchema);
+
