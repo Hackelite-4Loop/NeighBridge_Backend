@@ -8,10 +8,6 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-console.log('🔧 Cloudinary configured');
-console.log('🔑 CLOUDINARY_API_SECRET loaded:', process.env.CLOUDINARY_API_SECRET ? 'YES' : 'NO');
-console.log('🔑 API Secret length:', process.env.CLOUDINARY_API_SECRET?.length);
-console.log('🔑 API Secret (first 10 chars):', process.env.CLOUDINARY_API_SECRET?.substring(0, 10));
 
 // Generate signed upload parameters for secure uploads
 export const generateUploadSignature = (folder: string, userId: string, cloudName: string, apiKey: string) => {
@@ -19,11 +15,6 @@ export const generateUploadSignature = (folder: string, userId: string, cloudNam
   
   // Check if API secret is loaded correctly
   const apiSecret = process.env.CLOUDINARY_API_SECRET;
-  console.log('🔧 Environment check:');
-  console.log('  - NODE_ENV:', process.env.NODE_ENV);
-  console.log('  - API Secret exists:', !!apiSecret);
-  console.log('  - API Secret length:', apiSecret?.length);
-  console.log('  - API Secret (first 10):', apiSecret?.substring(0, 10));
   
   if (!apiSecret) {
     throw new Error('CLOUDINARY_API_SECRET environment variable is not set');
@@ -40,12 +31,8 @@ export const generateUploadSignature = (folder: string, userId: string, cloudNam
       : 'w_800,h_600,c_limit,q_auto,f_auto', // General post image optimization
   };
 
-  console.log('🔐 Generating signature for params (ordered):', paramsForSignature);
-
   // Generate signature (only for parameters that require signing)
   const signature = cloudinary.utils.api_sign_request(paramsForSignature, apiSecret);
-  
-  console.log('✅ Generated signature:', signature);
 
   const result = {
     signature,
@@ -58,7 +45,6 @@ export const generateUploadSignature = (folder: string, userId: string, cloudNam
     max_file_size: 5000000, // 5MB limit - sent but not signed
   };
 
-  console.log('📤 Returning signature data:', result);
   return result;
 };
 
